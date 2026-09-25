@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.pid
+*.log
+.venv*/
+.env
+.paperlab-runtime/
+# 用户自接数据目录（合成演示数据已随库提供，见 demo/）
+data/private/
