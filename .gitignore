@@ -12,3 +12,6 @@ data/private/
 data/vstock.db
 data/source_state.json
 data/source_eras.jsonl
+
+# 用户本地覆盖配置（含个人参数，不应入库）
+exchange/config.json

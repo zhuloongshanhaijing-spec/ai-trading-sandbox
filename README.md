@@ -35,6 +35,7 @@
 
 ```bash
 python3 demo/generate_demo_data.py   # 生成确定性合成演示数据（固定种子，无真实市场数据）
+# 注：会按当前日期重建 demo/data/（含已跟踪文件），工作区因此出现变更属正常现象
 python3 dashboard/demo_server.py     # 启动演示面板 → http://127.0.0.1:8740
 ```
 
