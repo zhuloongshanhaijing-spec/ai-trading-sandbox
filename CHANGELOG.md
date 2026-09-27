@@ -3,7 +3,7 @@
 本项目遵循[保持变更记录](https://keepachangelog.com/zh-CN/1.1.0/)惯例；
 版本号与发布节奏由维护者决定（见 [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) 的商业边界）。
 
-## [Unreleased]
+## [0.2.0] — 2026-09-27
 
 ### 新增
 - **多市场数据源架构**：`MarketSource` 显式契约（`exchange/sources.py`）——能力声明
