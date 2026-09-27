@@ -33,6 +33,7 @@ DEFAULT_CONFIG = {
     "margin_ratio": 0.5,          # 做空保证金率
     "equity_interval_sec": 60,
     "order_check_interval_sec": 5,
+    "t_plus_one": True,           # T+1；False=当日可卖（研究/演示用）
 }
 
 
@@ -52,8 +53,11 @@ class Exchange:
     def __init__(self, db_path=None):
         self.cfg = load_config()
         db_path = db_path or os.path.join(ROOT, "data", "vstock.db")
-        self.ledger = Ledger(db_path, self.cfg["initial_cash"])
+        self.ledger = Ledger(db_path, self.cfg["initial_cash"],
+                             self.cfg.get("t_plus_one", True))
         self.md = MarketData()
+        from sources import SourceManager
+        self.sm = SourceManager()  # 数据源注册表+换源闸门（见 docs/ADAPTER-SPEC.md）
         self.quote_cache = {}  # code -> quote（最近一次拿到的，含盘外）
 
     # ---------- 费用 ----------
@@ -356,17 +360,34 @@ def make_handler(ex):
                                 **{k: ex.snapshot()[k] for k in ("halted", "halt_reason")}})
                 elif u.path == "/api/quotes":
                     codes = (qs.get("codes", [""])[0] or "").split(",")
-                    codes = [norm_code(c) for c in codes if c.strip()]
-                    quotes = ex.md.quotes([c for c in codes if c])
-                    self._json({"quotes": list(quotes.values()) if quotes else []})
-                elif u.path == "/api/kline":
-                    code = norm_code(qs.get("code", [""])[0])
-                    limit = int(qs.get("limit", ["120"])[0])
-                    if not code:
-                        self._json({"error": "code 无效"}, 400)
+                    src = ex.sm.get()
+                    if ex.sm.current != "cn" and src is not None:
+                        quotes = src.quotes([c.strip() for c in codes if c.strip()])
+                        self._json({"quotes": list(quotes.values()),
+                                    "source": ex.sm.current})
                     else:
-                        rows = ex.md.kline(code, limit)
-                        self._json({"code": code, "bars": rows[-limit:] if rows else []})
+                        codes = [norm_code(c) for c in codes if c.strip()]
+                        quotes = ex.md.quotes([c for c in codes if c])
+                        self._json({"quotes": list(quotes.values()) if quotes else [],
+                                    "source": "cn"})
+                elif u.path == "/api/kline":
+                    code_raw = qs.get("code", [""])[0]
+                    limit = int(qs.get("limit", ["120"])[0])
+                    src = ex.sm.get()
+                    if ex.sm.current != "cn" and src is not None:
+                        rows = src.kline(code_raw, limit)
+                        self._json({"code": code_raw,
+                                    "bars": rows[-limit:] if rows else [],
+                                    "source": ex.sm.current})
+                    else:
+                        code = norm_code(code_raw)
+                        if not code:
+                            self._json({"error": "code 无效"}, 400)
+                        else:
+                            rows = ex.md.kline(code, limit)
+                            self._json({"code": code,
+                                        "bars": rows[-limit:] if rows else [],
+                                        "source": "cn"})
                 elif u.path == "/api/search":
                     q = qs.get("q", [""])[0]
                     self._json({"results": ex.md.search(q, 10) if q else []})
@@ -409,6 +430,23 @@ def make_handler(ex):
                     self._json({"group": group, "buckets": ex.pnl_groups(group)})
                 elif u.path == "/api/halts":
                     self._json({"halts": ex.ledger.halt_history()})
+                elif u.path == "/api/sources":
+                    self._json(ex.sm.status())
+                elif u.path == "/api/sources/eras":
+                    self._json({"eras": ex.sm.eras()})
+                elif u.path == "/api/source/positions":
+                    src = ex.sm.get()
+                    if src is None or not src.capabilities().get("trading"):
+                        self._json({"error": "当前源不支持交易原语"}, 400)
+                    else:
+                        self._json({"positions": src.positions(),
+                                    "source": ex.sm.current})
+                elif u.path == "/api/source/account":
+                    src = ex.sm.get()
+                    if src is None or not src.capabilities().get("trading"):
+                        self._json({"error": "当前源不支持交易原语"}, 400)
+                    else:
+                        self._json({**src.account(), "source": ex.sm.current})
                 else:
                     self._json({"error": "not found"}, 404)
             except Exception as e:
@@ -434,6 +472,22 @@ def make_handler(ex):
                 elif u.path == "/api/settle":
                     n = ex.ledger.settle_t1()
                     self._json({"ok": True, "settled_shares": n})
+                elif u.path == "/api/source/switch":
+                    target = str(body.get("target", ""))
+
+                    def _acct_view():
+                        return {"positions": len(ex.ledger.positions())
+                                + len(ex.ledger.shorts()),
+                                "open_orders": len(ex.ledger.open_orders())}
+                    r = ex.sm.switch(target, _acct_view)
+                    self._json(r, 200 if r.get("ok") else 409)
+                elif u.path == "/api/source/order":
+                    src = ex.sm.get()
+                    if src is None or not src.capabilities().get("trading"):
+                        self._json({"error": "当前源不支持交易原语（trading=False）"}, 400)
+                    else:
+                        self._json(src.place_order(body.get("side"), body.get("code"),
+                                                   body.get("shares"), body.get("price")))
                 else:
                     self._json({"error": "not found"}, 404)
             except Exception as e:

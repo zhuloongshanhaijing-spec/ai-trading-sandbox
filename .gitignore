@@ -8,3 +8,7 @@ __pycache__/
 .paperlab-runtime/
 # 用户自接数据目录（合成演示数据已随库提供，见 demo/）
 data/private/
+# 交易所运行时产物
+data/vstock.db
+data/source_state.json
+data/source_eras.jsonl

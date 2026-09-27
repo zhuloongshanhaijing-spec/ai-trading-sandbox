@@ -174,6 +174,16 @@ class H(BaseHTTPRequestHandler):
             self._json(_load("trades.json", {"stocks": [], "futures": [], "shadows": []}))
         elif u.path == "/api/nodes":
             self._json(_load("nodes.json", {"nodes": []}))
+        elif u.path == "/api/sources":
+            import sys as _sys, os as _os
+            _sys.path.insert(0, _os.path.join(ROOT, "exchange"))
+            try:
+                from sources import SourceManager
+                st = SourceManager().status()
+            except Exception as e:
+                st = {"error": repr(e)}
+            st["demo_note"] = "演示面板运行在合成数据源上；真实多源切换请运行 exchange/server.py"
+            self._json(st)
         elif u.path == "/api/params":
             now = datetime.now()
             p = _load("params.json", {"stock_cfg": {}, "futures_cfg": {}})
